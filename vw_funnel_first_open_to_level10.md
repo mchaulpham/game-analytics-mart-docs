@@ -203,6 +203,133 @@ View sử dụng `effective_level_starts`, gồm 2 nhóm:
 
 ## 5.1. Raw `Start_level`
 
+- `event_name = 'Start_level'`
+- `event_params = 'level_name'`
 
+## 5.2. Pseudo `Start_level`
+
+Một só level trong version `0.3.61` không có event `Start_level` nhưng có event `Tutorial_start` có thể dùng để thay thế.
+
+| Level ID | `level_name` | `name` |
+|:---|:---|:---|
+| N001 | 1 | Match |
+| N010 | 10 | Nectar |
+
+## 5.3. Điều kiện để event `Start_level` của một level hợp lệ
+
+Một event `Start_level` của một level được xem là candidate nếu:
+
+- `user_pseudo_id` khớp
+- `app_version` khớp `app_version` tại `first_open`
+- `level_name` khớp mapping
+- `Open_first` đã tồn tại
+- `level_start_time_utc` >= `open_first_time_utc`
+- `level_start_time_utc` <= `followup_end_time_utc`
+
+---
+
+# 6. Logic sequential progression
+
+View không chỉ dếm user từng thấy level. View yếu cầu user đi theo thứ tự sequential.
+
+Với mỗi user và mỗi mapped level: `raw_level_start_time_utc` = first start time của level đó trong 24h window.
+
+- Một level được xem là valid reach nếu:
+
+  - `raw_level_start_time_utc` IS NOT NULL
+
+  - Tất cả previous progression steps đều có start
+
+  - Không có order violation.
+
+- Order violation xảy ra nếu:
+
+current level start time < max start time của các previous steps.
+
+Nếu một previous step bị thiếu hoặc sai thứ tự, các step sau không được tính là reached hợp lệ trong funnel.
+
+---
+
+# 7. Logic level window
+
+Với mỗi user-level hợp lệ: `level_start_time_utc` = thời điểm start level hiện tại.
+
+- `level_window_end_time_utc` được xác định như sau:
+
+  - Nếu có next level start trong 24h: `level_window_end_time_utc` = `next_level_start_time_utc`
+ 
+  - Nếu không có next level start: `level_window_end_time_utc` = `followup_end_time_utc`
+
+> Tức là mọi event `End_level`, `Move` của một level chỉ được tính trong windows:
+
+```
+[
+  level_start_time_utc,
+  level_window_end_time_utc
+]
+```
+
+---
+
+# 8. Logic `End_level`, Win, Fail
+
+## 8.1. `End_level` event
+
+- `event_name = End_level`
+
+- Điều kiện match với level windows:
+
+  - same: `user_pseudo_id`, `app_version`, `level_name`
+ 
+  - `end_time_utc` >= `level_start_time_utc`
+ 
+  - `end_time_utc` <= `level_window_end_time_utc`
+ 
+## 8.2. Win/Fail param
+
+- Event param = `success`
+
+- Mapping:
+
+  - `success = 1` → Win
+ 
+  - `success = 0` → Fail
+ 
+- Logic
+
+```SQL
+CASE
+  WHEN success_value = '1'  THEN TRUE
+  WHEN success_value = '0' THEN FALSE
+  ELSE NULL
+END AS is_win
+```
+
+## 8.3. User-level outcome
+
+Với mỗi user-level:
+
+- `has_end`: có ít nhất 1 `End_level` event
+
+- `has_win`: có ít nhất 1 `End_level` event với `success = 1`
+
+- `has_fail`: có ít nhất 1 `End_level` event với `success = 0`
+
+## 8.4. Outcome groups
+
+Mỗi user-level có thể thuộc các nhóm:
+
+| Nhóm | Điều kiện |
+|:---|:---|
+| `win_only_user` | `has_win = TRUE` AND `has_fail = FALSE` |
+| `fail_only_user` | `has_win = FALSE` AND `has_fail = TRUE` |
+| `win_after_fail_or_mixed_user` | `has_win = TRUE` AND `has_fail = TRUE` |
+| `start_without_end_user` | `has_end = FALSE` |
+
+## 8.5. Quan hệ giữa các nhóm
+
+Với level rows:
+
+`end_level_user_count` = `win_only_user_cont` + `fail_only_user_count` + `win_after_fail_or_mixed_user_count`
 
 
