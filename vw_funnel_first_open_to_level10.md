@@ -330,6 +330,161 @@ Mỗi user-level có thể thuộc các nhóm:
 
 Với level rows:
 
-`end_level_user_count` = `win_only_user_cont` + `fail_only_user_count` + `win_after_fail_or_mixed_user_count`
+```
+end_level_user_count =
+  win_only_user_count +
+  fail_only_user_count +
+  win_after_fail_or_mixed_user_count
+```
 
+```
+user_count =
+  end_level_user_count +
+  start_without_end_user_count
+```
 
+```
+win_user_count =
+  end_level_user_count +
+  start_without_end_user_count
+```
+
+```
+win_user_count =
+  user_with_any_win_count =
+  win_only_user_count +
+  win_after_fail_or_mixed_user_count
+```
+
+```
+user_with_any_fail_count =
+  fail_only_user_count +
+  win_after_fail_or_mixed_user_count
+```
+
+```
+end_no_win_user_count =
+  fail_only_user_count
+```
+
+---
+
+# 9. Logic Move
+
+## 9.1. Move event
+
+- event_name = 'Move'
+
+Một Move được tính trong level nếu same:
+
+- `user_pseudo_id`
+- `app_version`
+- `move_time_utc` >= `level_start_time_utc`
+- `move_time_utc` <= `level_window_end_time_utc`
+
+## 9.2. Move used to win
+
+Với user-level có Win:
+
+```
+move_count_to_win = Số Move từ level_start_time_utc đến first_win_time_utc
+```
+
+## 9.3. Move before no win
+
+Với user-level không có Win:
+
+```
+move_count_before_no_win = Số Move từ level_start_time_utc đến level_windows_end_time_utc
+```
+
+---
+
+# 10. Làm sạch và chuẩn hóa dữ liệu raw
+
+## 10.1. Chuẩn hóa event timestamp
+
+- Raw GA4 có: `event_timestamp`
+
+- View chuyển sang UTC timestamp:
+
+```SQL
+TIMESTAMP_MICROS(event_timestamp) AS event_time_utc
+```
+
+## 10.2. Extract `level_name`
+
+- `level_name` được lấy từ `event_params`:
+
+- `event_params.key` = `level_name`
+
+- View dùng `COALESCE` để lấy value theo các kiểu:
+
+  - `string_value`
+  - `int_value`
+  - `float_value`
+  - `double_value`
+ 
+- Ouput cuối là: `string`
+
+## 10.3. Extract tutorial name
+
+- Tutorial name lấy từ: `event_params.key` = 'name'
+
+- Dùng cho pseudo start:
+  - Match: N001
+  - Nectar: N010
+
+## 10.4. Extract success
+
+- Success lấy từ: `event_params.key` = 'success'
+
+- Output dạng string: '0' hoặc '1'
+
+- Sau đó map sang boolean `is_win`
+
+- ## 10.5. Clean `duration_sec`
+
+- Raw `duration_sec` có thể chứa dấu phẩy thập phân.
+
+- Ví dụ: "12,34"
+
+- View xử lý:
+
+```SQL
+REPLACE(value, ',', '.')
+```
+
+- Sau đó:
+
+```SQL
+SAFE_CAST(... AS FLOAT64)
+```
+
+Nếu không cast được, output là `NULL`.
+
+## 10.6. Clean `attempt_no`
+
+- `attempt_no` được lấy từ `event_params`, sau đó:
+
+```SQL
+SAFE_CAST(... AS FLOAT64)
+```
+
+- Nếu không cast được, output là `NULL`.
+
+## 10.7. Loại intraday / non-daily tables
+
+- View chỉ đọc bảng có suffix đúng format ngày:
+
+```
+REGEXP_CONTAINS(_TABLE_SUFFIX, r'^\d{8}$')
+```
+
+- Do đó các bảng không phải daily export sẽ không được tính.
+
+---
+
+# 11. Đặc tả từng field trong output
+
+## 11.1. Dimension
