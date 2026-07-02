@@ -487,4 +487,77 @@ REGEXP_CONTAINS(_TABLE_SUFFIX, r'^\d{8}$')
 
 # 11. Đặc tả từng field trong output
 
-## 11.1. Dimension
+## 11.1. Dimension fields
+
+| Field | Type | Đặc tả |
+|:---|:---|:---| 
+| `app_version` | STRING | - App version tại `first_open` đầu tiên của user.<br>- Cách lấy:<br>`app-info.version` từ event `first_open` đầu tiên của user. |
+| `funnel_step_order` | INT64 | Thứ tự của strp trong funnel. |
+| `funnel_step_type` | STRING | Phân loại step là `onboarding` hay `level`. |
+| `funnel_step_name` | STRING | Tên hiển thị của funnel step<br>- Ví dụ: 01_first_open<br>- Công thức cho level rows:<br>CONCAT( LPAD(CAST(progression_step + 2 AS STRING), 2, '0'), '_Level_', LPAD(CAST(progression_step AS STRING), 2, '0'), '_', level_name ) |
+| `progression_step` | INT64 | Thứ tự level |
+| `progression_slot_id` | STRING | Slot là định danh progression step trong mapping table.<br>- Nguồn: dim_f10_level_map.progression_slot_id |
+| `level_name` | STRING | Tên level được map vào progression step.<br>- Nguồn: dim_f10_level_map.level_name |
+| `level_design_id` | STRING | ID thiết kế level nếu có trong mapping table.<br>- Nguồn: dim_f10_level_map.level_design-id |
+| `level_type` | STRING | Loại level nếu có trong mapping table><br>- Nguồn: dim_f10_level_map.level_type |
+
+---
+
+## 11.2. Funnel count fields
+
+| Field | Type | Đặc tả |
+|:---|:---|:---|
+| `user_count` | INT64 | - Với `first_open`: COUNT(DISTINCT user_pseudo_id trong cohort first_open)<br>- Với `Open_first`: COUNT(DISTINCT user_pseudo_id có Open_first trong 24h window)<br>- Với level_rows: COUNT(DISTINCT user_pseudo_id có valid sequential level_start_time_utc cho level đó) |
+| `previous_user_count` | INT64 | - Số user ở step trước đó. |
+| `drop_from_previous_step_user_count` | INT64 | - Số user rơi từ step trước sang step hiện tại.<br>- Công thức: `previous_user_count` - `user_count` |
+| `drop_rate_from_previous_step_pct` | FLOAT64 | - Tỷ lệ user rơi từ step trước sang step hiện tại<br>- Công thức: `drop_from_previous_step_user_count` / `previous_user_cont` * 100<br>- SQL: ROUND( SAFE_DIVIDE( previous_user_count - user_count, previous_user_count ) * 100, 2 ) |
+| `conversion_rate_from_previous_step_pct` | FLOAT64 | Tỷ lệ user chuyển tiếp từ step trước sang step hiện tại.<br>- Công thức: `user_count` / `previous_user_count` * 100<brr>- SQL: ROUND( SAFE_DIVIDE(user_count, previous_user_count) * 100, 2 ) |
+| `drop_from_level1_user_count` | INT64 | - Số user rơi so với Level 1 cohort.<br>- Công thức: `level1_user_count` - `user_count` |
+| `drop_rate_from_level1_pct` | FLOAT64 | - Tỷ lệ user rơi so với Level 1 cohort.<br>- Công thức: (`level1_user_count` - `user_count`) / `level1_user_count` × 100 |
+| `cumulative_conversion_rate_from_level1_pct` | FLOAT64 | Conversion tích lũy từ Level 1 tới level hiện tại.<br>- Công thức: `user_count` / `level1_user_count` * 100 |
+| `cumulative_drop_rate_from_level1_pct` | FLOAT64 | - Drop tích lũy từ Level 1 tới level hiện tại.<br>- Công thức: 100 - `cumulative_conversion_rate_from_level1_pct` hoặc<br>1 - `user_count` / `level1_user_count` |
+| `conversion-rate_from_first_open_pct` | FLOAT64 | - Conversion từ `first_open` tới step hiện tại. <br>- Công thức: `user_count` / `first_open_user_count` * 100 |
+| `drop_rate_from_first_open_pct` | FLOAT64 | Drop từ `first_open` tới step hiện tại.<br>- Công thức: 100 - `conversion_rate_from_first_open_pct` hoặc<br>1 - `user_count` / `first_open_user_count` |
+
+---
+
+## 11.3. End / Win / Fail fields
+| Field | Type | Đặc tả |
+|:---|:---|:---|
+| `end_level_user_count` | INT64 | Số user có ít nhất 1 `End_level` trong level window.<br>- Công thức: COUNT(DISTINCT user_pseudo_id WHERE has_end = TRUE) |
+| `win_user_count` | INT64 | Số user có ít nhất 1 `End_level` success = 1 trong level window.<br>- Công thức: COUNT(DISTINCT user_pseudo_id WHERE has_win = TRUE) |
+| `end_no_win_user_count` | INT64 | Số user có `End_level` nhưng không có Win trong level window.<br>`end_no_win_user_count` = `fail_only_user_count` |
+| `start_without_end_user_count` | INT64 | Số user start level nhưng không có `End_level` trong level window<br>- Công thức: COUNT(DISTINCT user_pseudo_id WHERE has_end = FALSE) |
+| `user_witth_any_win_count` | INT64 | - Số user có ít nhất 1 win event trong level window.<br>- Công thức: COUNT(DISTINCT user_pseudo_id WHERE has_win = TRUE) |
+| `user_with_any-fail-count` | INT64 | - Số user có ít nhất 1 fail event trong level window.<br>- Công thức: COUNT(DISTINCT user_pseudo_id WHERE has_fail = TRUE) |
+| `win_only_user_count` | INT64 | Số user có win và không có fail trong level window. |
+| `fail_only_user_count` | INT64 | Số user có fail và không có win trong level window. |
+| `win_after_fail_or_mixed_user_count` | INT64 | Số user vừa có fail vừa có win trong cùng level window. |
+| `win_end_event_count` | INT64 | Tổng số `End_level` events có success = 1 |
+| `fail_end_event_count` | INT64 | - Tổng số `End_level` events có success = 0.<br>- Đây là event count, không phải user count. |
+| `total_end_event_count` | INT64 | - Tổng số `End_level` events trong level window.<br>- Công thức: `win_end_event_count` + `fail_end_event_count` |
+
+---
+
+## 11.4. Rate fields for End / Win / Fail
+
+| Field | Đặc tả |
+|:---|:---|
+| `win_user_rate_pct` | - Tỷ lệ user start level và có ít nhất 1 win.<br>- Công thức: `win_user_count` / `user_count` * 100 |
+| `end_no_win_user_rate_pct` | - Tỷ lệ user start level, có `End_level`, nhưng không có win.<br>- Công thức: `end_no_win_user_count` / `user_count` * 100 |
+| `end_level_converage_rate_pct` | - Tỷ lệ user start leveel và có `End_level`<br>- Công thức: `end_level_user_count` / `user_count` * 100 |
+| `start_without_end_rate_pct` | - Tỷ lệ user start level và từng fail ít nhất 1 lần.<br>- Công thức: `user_with_any_fail_count` / `user_count` * 100 |
+| `user_with_any_fail_rate_pct` | - Tỷ lệ user start level và từng fail ít nhất 1 lần.<br>- Công thức: `user_with_any_fail_count` / `user_count` * 100 |
+| `faild_only_user_rate_pct` | Tỷ lệ user start level, fail, và không win.<br>- Công thức: `fail_only_user_count` / `user_count` * 100 |
+| `win_after_fail_or_mixed_user_rate_pct` | - Tỷ lệ user start level, từng fail, nhưng cũng có win.<br>- Công thức: `win_after_fail_or_mixed_user_count` / `user_count` * 100 |
+
+---
+
+## 11.5. Timing fields
+
+| Field | Type | Đặc tả |
+|:---|:---|:---|
+| `avg_seconds_from_previous_step` | FLOAT64 | - Thời gian trung bình từ step trước sang step hiện tại.<br>- Công thức: AVG(seconds_from_previous_step) |
+| `median_seconds_from_previous_step` | INT64 | - Median thời gian từ step trước sang step hiện tại.<br>- Công thức: APPROX_QUANTILES(seconds_from_previous_step, 100)[OFFSET(50)] |
+| `p90_seconds_from_previous_step` | INT64 | P90 thời gian từ step trước sang step hiện tại.<br>- Công thức: APPROX_QUANTILES(seconds_from_previous_step, 100)[OFFSET(90)] |
+| `avg_seconds_from_first_open` | FLOAT64 | - Thời gian trung bình từ first_open tới step hiện tại.<br>- Công thức:AVG(current_step_time - first_open_time_utc) |
