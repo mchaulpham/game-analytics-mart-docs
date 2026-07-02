@@ -561,3 +561,27 @@ REGEXP_CONTAINS(_TABLE_SUFFIX, r'^\d{8}$')
 | `median_seconds_from_previous_step` | INT64 | - Median thời gian từ step trước sang step hiện tại.<br>- Công thức: APPROX_QUANTILES(seconds_from_previous_step, 100)[OFFSET(50)] |
 | `p90_seconds_from_previous_step` | INT64 | P90 thời gian từ step trước sang step hiện tại.<br>- Công thức: APPROX_QUANTILES(seconds_from_previous_step, 100)[OFFSET(90)] |
 | `avg_seconds_from_first_open` | FLOAT64 | - Thời gian trung bình từ first_open tới step hiện tại.<br>- Công thức:AVG(current_step_time - first_open_time_utc) |
+| `median_seconds_from_first_open` | INT64 | Median thời gian từ first_open tới step hiện tại. |
+| `p90_seconds_from_first_open` | INT64 | P90 thời gian từ `first_open` tới step hiện tại. |
+
+---
+
+## 11.6. Move fields
+
+| Field | Type | Đặc tả |
+|:---|:---|:---|
+| `avg_move_used_to_win` | FLOAT64 | Số move trung bnhf user dùng để win level (chỉ tnhs user có win).<br>- Công thức user-level: move_count_to_win = số Move từ `level_start_time_utc` tới `first_win_time-utc`<br>- Công thức aggregate: AVG(move_count_to_win) trên các user có has_win = TRUE |
+| `avg_move_used_before_drop_no_win` | FLOAT64 | - Số move trung bình của user không win (chỉ tính user không có win)<br>- Công thức user-level: `move_count_before_no_win` = Số Move từ `level_start_time_utc` tới `level_window_end_time_utc`<br>- Công thức aggragate: AVG(move_count_before_no_win) trên các user has_win = FALSE |
+
+---
+
+## 11.7. Duration / attempt fields
+
+| Field | Type | Đặc tả |
+|:---|:---|:---|
+| `avg_reported_duration_sec_on_win` | FLOAT64 | Thời gian `duration_sec` trung bình của user có win.<br>- Nguồn: `End_level.duration_sec`<br>- Raw `duration_sec` được làm sạch bằng: replace comma decimal → dot decimal SAFE_CAST to FLOAT64<br>- Lưu ý: Nếu `duration_sec` coverage thấp hoặc tracking lỗi, field này cần đọc thận trọng. |
+| `avg_last_attempt_no` | FLOAT64 | Attempt number trung bình ở `End-level` cuối cùng trong level window.<br>- Nguồn: `End_level.attempt_no`<br>- Raw `attmpt_no` được cast bằng: SAFE_CASE(... AS INT64) |
+
+---
+
+
