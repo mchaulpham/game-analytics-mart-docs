@@ -516,7 +516,7 @@ REGEXP_CONTAINS(_TABLE_SUFFIX, r'^\d{8}$')
 | `drop_rate_from_level1_pct` | FLOAT64 | - Tỷ lệ user rơi so với Level 1 cohort.<br>- Công thức: (`level1_user_count` - `user_count`) / `level1_user_count` × 100 |
 | `cumulative_conversion_rate_from_level1_pct` | FLOAT64 | Conversion tích lũy từ Level 1 tới level hiện tại.<br>- Công thức: `user_count` / `level1_user_count` * 100 |
 | `cumulative_drop_rate_from_level1_pct` | FLOAT64 | - Drop tích lũy từ Level 1 tới level hiện tại.<br>- Công thức: 100 - `cumulative_conversion_rate_from_level1_pct` hoặc<br>1 - `user_count` / `level1_user_count` |
-| `conversion-rate_from_first_open_pct` | FLOAT64 | - Conversion từ `first_open` tới step hiện tại. <br>- Công thức: `user_count` / `first_open_user_count` * 100 |
+| `conversion_rate_from_first_open_pct` | FLOAT64 | - Conversion từ `first_open` tới step hiện tại. <br>- Công thức: `user_count` / `first_open_user_count` * 100 |
 | `drop_rate_from_first_open_pct` | FLOAT64 | Drop từ `first_open` tới step hiện tại.<br>- Công thức: 100 - `conversion_rate_from_first_open_pct` hoặc<br>1 - `user_count` / `first_open_user_count` |
 
 ---
@@ -529,7 +529,7 @@ REGEXP_CONTAINS(_TABLE_SUFFIX, r'^\d{8}$')
 | `end_no_win_user_count` | INT64 | Số user có `End_level` nhưng không có Win trong level window.<br>`end_no_win_user_count` = `fail_only_user_count` |
 | `start_without_end_user_count` | INT64 | Số user start level nhưng không có `End_level` trong level window<br>- Công thức: COUNT(DISTINCT user_pseudo_id WHERE has_end = FALSE) |
 | `user_witth_any_win_count` | INT64 | - Số user có ít nhất 1 win event trong level window.<br>- Công thức: COUNT(DISTINCT user_pseudo_id WHERE has_win = TRUE) |
-| `user_with_any-fail-count` | INT64 | - Số user có ít nhất 1 fail event trong level window.<br>- Công thức: COUNT(DISTINCT user_pseudo_id WHERE has_fail = TRUE) |
+| `user_with_any_fail_count` | INT64 | - Số user có ít nhất 1 fail event trong level window.<br>- Công thức: COUNT(DISTINCT user_pseudo_id WHERE has_fail = TRUE) |
 | `win_only_user_count` | INT64 | Số user có win và không có fail trong level window. |
 | `fail_only_user_count` | INT64 | Số user có fail và không có win trong level window. |
 | `win_after_fail_or_mixed_user_count` | INT64 | Số user vừa có fail vừa có win trong cùng level window. |
@@ -570,7 +570,7 @@ REGEXP_CONTAINS(_TABLE_SUFFIX, r'^\d{8}$')
 
 | Field | Type | Đặc tả |
 |:---|:---|:---|
-| `avg_move_used_to_win` | FLOAT64 | Số move trung bnhf user dùng để win level (chỉ tnhs user có win).<br>- Công thức user-level: move_count_to_win = số Move từ `level_start_time_utc` tới `first_win_time-utc`<br>- Công thức aggregate: AVG(move_count_to_win) trên các user có has_win = TRUE |
+| `avg_move_used_to_win` | FLOAT64 | Số move trung bnhf user dùng để win level (chỉ tnhs user có win).<br>- Công thức user-level: move_count_to_win = số Move từ `level_start_time_utc` tới `first_win_time_utc`<br>- Công thức aggregate: AVG(move_count_to_win) trên các user có has_win = TRUE |
 | `avg_move_used_before_drop_no_win` | FLOAT64 | - Số move trung bình của user không win (chỉ tính user không có win)<br>- Công thức user-level: `move_count_before_no_win` = Số Move từ `level_start_time_utc` tới `level_window_end_time_utc`<br>- Công thức aggragate: AVG(move_count_before_no_win) trên các user has_win = FALSE |
 
 ---
@@ -583,5 +583,69 @@ REGEXP_CONTAINS(_TABLE_SUFFIX, r'^\d{8}$')
 | `avg_last_attempt_no` | FLOAT64 | Attempt number trung bình ở `End-level` cuối cùng trong level window.<br>- Nguồn: `End_level.attempt_no`<br>- Raw `attmpt_no` được cast bằng: SAFE_CASE(... AS INT64) |
 
 ---
+
+## 11.8. Time boundary fields
+
+| Field | Type | Đặc tả |
+|:---|:---|:---|
+| `first_time_utc` | TIMESTAMP | - Thời điểm đầu tiên của chính funnel step đó. |
+| `last_time_utc` | TIMESTAMP | - Thời điểm cuối cùng của chính funnel đó. |
+| `query_time_utc` | TIMESTAMP | - Thời điểm view được query.<br>- Công thức: CURRENT_TIMESTAMP() |
+
+---
+
+## 12. Output behavior theo row type
+
+## 12.1. Onboarding rows
+
+- `01_first_open`
+- `02_Open_first`
+
+## 12.2. Level rows
+
+- `03_Level_01_...`
+- ...
+- `12_Level_10_..`
+
+---
+
+# 13. Validation rules đã pass
+
+View được xem là hợp lệ nếu các điều kiện sau đúng:
+
+- `row_count` = 12
+- `min_step_order` = 1
+- `max_step_order` = 12
+- `distinct_step_order_count` = 12
+- `first_open_row_count` = 1
+- `open_first_row_count` = 1
+
+Funnel count:
+
+- `user_count` không tăng ngược
+- `drop_from_previous_step_user_count` = `previous_user_count` - `user_count`
+- `drop_rate_from_previous_step_pct` đúng công thức
+- `conversion_rate_from_previous_step_pct` đúng công thức
+
+Outcome
+
+- `user_count` = `end_level_user_count` + `start_without_end_user_count`
+- `win_user_count` = `user_with_any_win_count`
+- `end_no_win_user_count` = `fail_only_user_count`
+- `user_with_any_win_count` = `win_only_user_count` + `win_after_fail_or_mixed_user_count`
+- `user_with_any_fail_count` = `fail_only_user_count` + `win_after_fail_or_mixed_user_count`
+- `end_level_user_count` = `win_only_user_count` + `fail_only_user_count` + `win_after_fail_or_mixed_user_count`
+- `total_end_event_count` = `win_end_event_count` + `fail_end_event_count`
+
+Timing: `median_seconds_from_previous_step` <= `p90_seconds_from_previous_step`
+
+---
+
+# 14. Diễn giải metric quan trọng
+
+## 14.1. Đọc progression drop
+
+- `drop_from_previous_step_user_count`
+- `drop_rate_from_previvous_step_pct`
 
 
