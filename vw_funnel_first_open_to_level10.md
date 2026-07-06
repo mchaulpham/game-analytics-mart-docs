@@ -648,4 +648,322 @@ Timing: `median_seconds_from_previous_step` <= `p90_seconds_from_previous_step`
 - `drop_from_previous_step_user_count`
 - `drop_rate_from_previvous_step_pct`
 
+## 14.2. Đọc Difficulty
+
+- `user_with_any_fail_count`
+- `user_with_any_fail_rate_ptc`
+- `fail_end_event_count`
+- `win_after_fail_or_mixed_user_count`
+- `avg_move_used_to_win`
+
+## 14.3. Đọc abandon / no-end
+
+- `start_without_end_user_count`
+- `start_without_end_rate_ptc`
+
+## 14.4. Đọc timing
+
+- `median_seconds_from_previous_step`
+- `p90_seconds_from_previous_step`
+
+Không nên chỉ nhìn average (mean) vì dễ bị outlier kéo cao.
+
+---
+
+# 15. Know limitations
+
+## 15.1. View dùng `CURRENT_TIMESTAMP()`
+
+Do view dùng meturity logic:
+
+```
+first_open_time_utc <= CURRENT_TIMESTAMP() - 24 hours
+```
+
+Nên kết quả có thể thay đổi theo thời gian khi cohort mới đủ maturity.
+
+## 15.2. Không tính intraday table
+
+View chỉ đọc daily tables có suffix `YYYYMMDD`.
+
+Nếu cần realtime/intraday analysis, cần tạo viw hoặc query riêng.
+
+## 15.3. App version cố định theo first_open
+
+Nếu user `first_open` ở vesion A nhưng chơi tiếp trong version B trong 24h, view vẫn gán user vào version A và chỉ match event cùng `app_version`.
+
+Điều này phù hợp với cohort analysis theo verson tại `first_open`, nhưng không phù hợp nếu muốn phân tích theo version tại từng level start.
+
+## 15.4. Sequential funnel nghiêm ngặt
+
+User chỉ được tính ở Level N nếu đã có đầy đủ các previous levels theo đúng thứ tự.
+
+Điều này giúp funnel sạch, nhưng có thể loại các user có dữ liệu tracking thiếu ở step trước.
+
+## 15.6. Win/Fail phụ param `success`
+
+Nếu tracking thay đổi key hoặc value của success, view cần được cập nhật.
+
+---
+
+# Cập nhật 01: Bổ sung 2 metric mới
+
+## 1. `first_end_is_win_user_count`
+
+### 1.1. Ý nghĩa
+
+Là số user có `End_level` đầu tiên trong level window là Win.
+
+Nói cách khác, với mỗi user trong một level cụ thể, hệ thống nhìn vào event `End_level` đầu tiên của user đó trong `level_window`. Nếu event đầu tiên đó có: `success` = 1 thì user được tính vào `first_end_is_win_user_count`.
+
+Metric này trả lời câu hỏi;
+
+> Trong số user đã Start_level, bao nhiêu user có kết quả kết thúc level đầu tiên là Win?
+
+### 1.2. Nguồn dữ liệu
+
+- Nguồn raw event: `analytics_524104373.events_*`
+- Event sử dụng: `End_level`
+- Params:
+  - `level_name`
+  - `success`
+    - `success` = 1 → Win
+    - `success` = 0 → Fail
+   
+### 1.3. Điều kiện event được tính
+
+Một `End_level` event chỉ được xét cho metric này nếu thỏa mãn same:
+- `user_pseudo_id`
+- `app_version`
+- `level_name`
+- `end_time_utc` >= `level_start_time_utc`
+- `end_time_utc` <= `level_window_end_time_utc`
+
+> Tức là event phải nằm trong đúng level window của user-level đó.
+
+### 1.4. Logic user-level
+
+Với mỗi user-level, lấy `End_level` đầu tiên theo thời gian:
+
+```SQL
+ARRAY_AGG(
+  IF(end_events.end_time_utc IS NOT NULL, end_events.is_win, NULL)
+  IGNORE NULLS
+  ORDER BY end_events.end_time_utc
+  LIMIT 1
+)[SAFE_OFFSET(0)] AS first_end_is_win
+```
+
+Trong đó:
+
+```SQL
+CASE
+  WHEN success_value = '1' THEN TRUE
+  WHEN success_value = '0' THEN FALSE
+  ELSE NULL
+END AS is_win
+```
+
+Nếu `first_end_is_win` = TRUE, user được tính vào metric.
+
+### 1.5. Công thức aggregate
+
+```SQL
+COUNT(DISTINCT IF(first_end_is_win = TRUE, user_pseudo_id, NULL)) AS first_end_is_win_user_count
+```
+
+### 1.6. Output
+
+- Kiểu dữ liệu: `INT64`
+- Chỉ áp dụng cho level rows
+
+### 1.7. Khác gì so với `win_user_count`?
+
+- `win_user_count` đếm: User có ít nhất 1 win trong level window.
+- `first_end_is_win_user_coutn` đếm: User có `End_level` đầu tiên là win.
+
+- Vì vậy: `first_end_is_win_user_count` <= `win_user_count`
+
+- Trường hợp user fail trước rồi win sau, user này được tính vào:
+  - `win_user_count`
+  - `user_with_any_fail_count`
+  - `win_after_fail_or_mixed_user_count`
+ 
+- Nhưng không được tính vào: `first_end_is_win_user_count`.
+
+### 1.9. Có phải First-Try-Win không?
+
+Không hoàn toàn, `firt_end_is_win_user_count` phản ánh: `End_level` đầu tiên được ghi nhận là win. Nó không phụ thuộc vào `attempt_no`.
+
+Nếu tracking `End_level` chính xác, metric này là proxy tốt cho "first-result win". Tuy nhiên, nếu `End_level` bị thiếu ở một số attempt trước đó, thì nó không thể chứng minh tuyệt đối user win ngay attempt đầu tiên.
+
+---
+
+## 2. `attempt_1_win_user_count`
+
+### 2.1. Ý nghĩa
+
+Là số user có ít nhất 1 `End_level` success = 1 với `attempt_no` = 1.
+
+Metric này trả lời câu hỏi: Bao nhiêu user được ghi nhận là win ở attempt 1?
+
+### 2.2. Nguồn dữ liệu
+
+- Nguồn raw event: `analytics_524104373.event_*`
+- Event sử dụng: `End_level`
+- Params:
+  - `level_name`
+  - `success`
+  - `attempt_no`
+- Trong đó
+  - success = 1 → Win
+  - `attempt_no` = 1 → attempt đầu tiên theo tracking
+ 
+### 2.3. Làm sạch / chuẩn hóa dữ liệu raw
+
+- `success` được lấy từ `event_params` với key: success
+  - Output được chuẩn hóa về string: '1', '0'
+  - Sau đó map sang boolean:
+
+```SQL
+CASE
+  WHEN success_value = '1' THEN TRUE
+  WHEN success_value = '0' THEN FALSE
+  ELSE NULL
+END AS is_win
+```
+
+- `attempt_no` được lấy từ `event_params` với key: attempt_no.
+- Sau đó được cast sang `INT64`
+
+```SQL
+SAFE_CAST(
+  (
+    SELECT COALESCE(
+      ep.value.string_value,
+      CAST(ep.value.int_value AS STRING),
+      CAST(ep.value.float_value AS STRING),
+      CAST(ep.value.double_value AS STRING)
+    )
+    FROM UNNEST(event_params) ep
+    WHERE ep.key = 'attempt_no'
+    LIMIT 1
+  ) AS INT64
+) AS attempt_no
+```
+
+- Nếu `attempt_no` không tồn tại hoặc không cast được sang `INT64`, output là: NULL.
+- Các event có `attempt_no` = NULL sẽ không được tính vào `attempt_1_win_user_count`.
+
+### 2.4. Điều kiện event được tính
+
+Một event được tính là attempt-1 win nếu:
+- `event_name` = End_level
+- `success` = 1
+- `attempt_no` = 1
+- Same `user_pseudo-id`
+- Same `level_name`
+- Event nằm trong đúng level window
+
+### 2.5. Logic user-level
+
+Với mỗi user-level:
+
+```SQL
+COUNTIF(
+  end_events.is_win = TRUE
+  AND end_events.attempt_no = 1
+) > 0 AS has_attempt_1_win
+```
+
+Nếu `has_attempt_1_win` = TRUE, user được tính vào metric.
+
+### 2.6. Công thức aggregate
+
+```
+COUNT(DISTINCT IF(has_attempt_1_win = TRUE, user_pseudo_id, NULL)) AS attempt_1_win_user_count
+```
+
+### 2.7. Output
+
+- Kiểu dữ liệu: `INT64`
+- Chỉ áp dụng cho level rows
+
+### 2.8. Khác gì với `first_end_is_win_user_count`?
+
+- `first_end_is_win_user_count` dựa trên: Thứ tự `End_level` theo thời gian.
+- `attempt_1_win_user_count` dựa trên: Giá trị `attempt_no` được tracking trong `End_level`.
+- Vì vậy hai metric có thể khác nhau vì:
+  - `attempt_no` bị thiếu
+  - `attempt_no` không bắt đầu từ 1
+  - `attempt_no` được tracking không đồng nhất
+  - `End_level` đầu tiên là Win nhưng `attempt_no` không bằng 1.
+ 
+---
+
+## 3. Quan hệ logic với các field hiện có
+
+Với level rows, các quan hệ logic cần đúng:
+
+- `first_end_is_win_user_count` <= `win_user_count`
+- `first_end_is_win_user_count` <= `end_level_user_count`
+- `attempt_1_win_user_count` <= `win_user_count`
+- `attempt_1_win_user_count` <= `end_level_user_count`
+
+Trong đó:
+
+`win_user_count` = `user_with_any_win_count`
+
+và:
+
+`end_level_user_count` = `win_only_user_count` +
+                     `fail_only_user_count` +
+                     `win_after_fail_or_mixed_user_count`
+
+`first_end_is_win_user_count` có thể lớn hơn hoặc nhỏ hơn `attempt_1_win_user_count`, tùy chất lượng tracking `attempt_no`, nhưng thông thường:
+
+`attempt_1_win_user_count` <= `first_end_is_win_user_count`
+
+Tuy nhiên không nên xem đây là rule bắt buộc tuyệt đối nếu tracking `attempt_no` có lỗi hoặc event ordering bất thường.
+
+---
+
+## 4. Validation status
+
+Hai metric mới đã được validate bằng 2 nhóm kiểm tra;
+
+### 4.1. Internal validation
+
+Kiểm tra:
+
+- onboarding rows phải NULL
+- level rows không NULL
+- `first_end_is_win_user_count` <= `win_user_count`
+- `first_end_is-win_user_count` <= `end_level_user_count`
+- `attempt_1_win_user_count` <= `win_user_count`
+- `attempt_1_win_user_count` <= `end_level_user_count`
+
+Kết quả: PASS
+
+### 4.2. Raw recompute validation
+
+Hai metric được recompute trực tiếp từ raw GA4 theo cùng logic:
+
+- `first_open` cohort
+- 24h observation window
+- `Open_first` requirement
+- sequential Level 1 → Level 10
+- level window
+- `End_level` success
+- `attempt_no`
+
+Kết quả:
+
+- Tất cả Level 1 → Level 10 đều PASS 
+- `first_end_is_win_diff` = 0 
+- `attempt_1_win_diff` = 0
+
+Do đó, hai metric mới có thể được xem là hợp lệ để dùng trong dashboard và phân tích chính thức.
+
+---
 
