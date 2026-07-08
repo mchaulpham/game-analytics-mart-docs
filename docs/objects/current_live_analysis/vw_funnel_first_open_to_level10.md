@@ -967,3 +967,37 @@ Do đó, hai metric mới có thể được xem là hợp lệ để dùng tron
 
 ---
 
+# Liên kết liên quan
+
+## Framework và tài liệu tổng quan
+
+- README tổng quan: [README](../../../README.md)
+- Framework pipeline: [Framework Pipeline](../../pipeline/framework_pipeline.md)
+- Dependency graph: [Mart Dependency Graph](../../graph/mart_dependency_graph.md)
+
+## Nhóm tài liệu
+
+- Nhóm object: `current_live_analysis`
+- Vai trò trong mart: view phân tích funnel tổng hợp từ `first_open` đến Level 10 trong cửa sổ 24 giờ.
+- Grain: 1 `app_version` × 1 `funnel_step`.
+
+## Upstream
+
+- GA4 raw source: `project-feb1f7ca-3dbf-419f-aa8.analytics_524104373.events_*`
+- Mapping first 10 levels: [dim_f10_level_map](../core_foundation/dim_f10_level_map.md)
+
+## Downstream
+
+- Hiện chưa có downstream trực tiếp trong mart dependency graph.
+- View này hiện phù hợp để dùng trực tiếp cho dashboard hoặc phân tích ad-hoc về onboarding, early progression, drop-off, win/fail/no-end, timing và move usage.
+
+## DDL tham chiếu
+
+- DDL: [vw_funnel_first_open_to_level10.sql](../../../sql/ddl/current_live_analysis/vw_funnel_first_open_to_level10.sql)
+
+## Lưu ý khi đọc cùng các view khác
+
+- View này dùng cửa sổ quan sát 24 giờ kể từ `first_open_time_utc`, khác với `vw_d1_retention`, vốn dùng D1 theo calendar day local.
+- View này gán `app_version` theo event `first_open` đầu tiên và yêu cầu nhiều event follow-up khớp với `app_version` đó.
+- View này dùng sequential funnel nghiêm ngặt, nên nếu một previous step bị thiếu tracking hoặc sai thứ tự, các step sau có thể không được tính là reached hợp lệ.
+- Khi dùng view này để kết luận về difficulty hoặc progression, nên đọc cùng `vw_pipeline_health_daily` để kiểm tra rủi ro tracking.

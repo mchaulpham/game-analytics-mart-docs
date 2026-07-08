@@ -8,7 +8,7 @@ Mục tiêu của repository là giúp team hiểu rõ:
 * các bảng và view trong BigQuery được xây dựng như thế nào;
 * từng object phục vụ mục đích phân tích gì;
 * object nào phụ thuộc object nào;
-* cách đọc kết quả phân tích onboarding, 10 level đầu, độ khó level, progression và sức khỏe pipeline.
+* cách đọc kết quả phân tích onboarding, 10 level đầu, retention, độ khó level, progression và sức khỏe pipeline.
 
 Trong tài liệu này:
 
@@ -18,6 +18,8 @@ Trong tài liệu này:
 * **View** là bảng ảo trong BigQuery, không lưu dữ liệu vật lý mà lưu logic truy vấn.
 * **Mart** là lớp dữ liệu đã được xử lý để phục vụ phân tích.
 * **Pipeline** là luồng xử lý dữ liệu từ nguồn thô đến bảng phân tích cuối.
+* **Cohort** là nhóm user được gom theo cùng một điều kiện ban đầu, ví dụ cùng ngày `first_open` hoặc cùng `app_version` tại `first_open`.
+* **Retention** là chỉ số đo user có quay lại app hoặc quay lại gameplay sau một khoảng thời gian nhất định hay không.
 
 ---
 
@@ -50,18 +52,19 @@ Repository chỉ nên lưu:
 
 ## 2. Trạng thái hiện tại
 
-Data mart hiện có 20 object chính:
+Data mart hiện có 22 object chính:
 
-| Nhóm                      | Số lượng | Vai trò                                                           |
-| ------------------------- | -------: | ----------------------------------------------------------------- |
-| Core foundation           |        8 | Lớp nền: mapping, event sạch, tutorial flag, level attempts.      |
-| Current live analysis     |        7 | Phân tích onboarding, first 10 level, timing, design diagnostics. |
-| Monitoring level analysis |        5 | Theo dõi reach, difficulty, progression và pipeline health.       |
+| Nhóm                      | Số lượng | Vai trò                                                                     |
+| ------------------------- | -------: | --------------------------------------------------------------------------- |
+| Core foundation           |        8 | Lớp nền: mapping, event sạch, tutorial flag, level attempts.                |
+| Current live analysis     |        8 | Phân tích onboarding, first 10 levels, funnel tổng hợp, timing, diagnostics. |
+| Monitoring level analysis |        5 | Theo dõi reach, difficulty, progression và pipeline health.                 |
+| Retention analysis        |        1 | Phân tích retention theo cohort, app version và hành vi quay lại gameplay.  |
 
 Tổng cộng:
 
 ```text
-20 objects
+22 objects
 ```
 
 ---
@@ -96,20 +99,25 @@ Tổng cộng:
 │       │   ├── vw_f10_timing_24h.md
 │       │   ├── vw_f10_funnel_timing_24h.md
 │       │   ├── vw_f10_design_diag_24h.md
-│       │   └── vw_f10_design_board_24h.md
+│       │   ├── vw_f10_design_board_24h.md
+│       │   └── vw_funnel_first_open_to_level10.md
 │       │
-│       └── monitoring_level_analysis/
-│           ├── vw_user_level_reach.md
-│           ├── vw_level_difficulty_daily.md
-│           ├── vw_level_difficulty_summary.md
-│           ├── vw_level_progression_version.md
-│           └── vw_pipeline_health_daily.md
+│       ├── monitoring_level_analysis/
+│       │   ├── vw_user_level_reach.md
+│       │   ├── vw_level_difficulty_daily.md
+│       │   ├── vw_level_difficulty_summary.md
+│       │   ├── vw_level_progression_version.md
+│       │   └── vw_pipeline_health_daily.md
+│       │
+│       └── retention_analysis/
+│           └── vw_d1_retention.md
 │
 └── sql/
     └── ddl/
         ├── core_foundation/
         ├── current_live_analysis/
-        └── monitoring_level_analysis/
+        ├── monitoring_level_analysis/
+        └── retention_analysis/
 ```
 
 ---
@@ -133,15 +141,16 @@ Tổng cộng:
 
 ### 4.2 Current live analysis
 
-| Object                     | Loại | Mục đích                                    |
-| -------------------------- | ---- | ------------------------------------------- |
-| `vw_onboard_funnel_24h`    | View | Phân tích onboarding funnel trong 24 giờ.   |
-| `vw_onboard_drop_diag_24h` | View | Chẩn đoán điểm rơi onboarding.              |
-| `vw_f10_funnel_24h`        | View | Phân tích funnel 10 level đầu trong 24 giờ. |
-| `vw_f10_timing_24h`        | View | Phân tích thời gian đi qua 10 level đầu.    |
-| `vw_f10_funnel_timing_24h` | View | Kết hợp funnel và timing của 10 level đầu.  |
-| `vw_f10_design_diag_24h`   | View | Chẩn đoán thiết kế 10 level đầu.            |
-| `vw_f10_design_board_24h`  | View | Bảng ưu tiên hành động cho thiết kế level.  |
+| Object                                | Loại | Mục đích                                                                                                                         |
+| ------------------------------------- | ---- | -------------------------------------------------------------------------------------------------------------------------------- |
+| `vw_onboard_funnel_24h`               | View | Phân tích onboarding funnel trong 24 giờ.                                                                                        |
+| `vw_onboard_drop_diag_24h`            | View | Chẩn đoán điểm rơi onboarding.                                                                                                   |
+| `vw_f10_funnel_24h`                   | View | Phân tích funnel 10 level đầu trong 24 giờ.                                                                                      |
+| `vw_f10_timing_24h`                   | View | Phân tích thời gian đi qua 10 level đầu.                                                                                         |
+| `vw_f10_funnel_timing_24h`            | View | Kết hợp funnel và timing của 10 level đầu.                                                                                       |
+| `vw_f10_design_diag_24h`              | View | Chẩn đoán thiết kế 10 level đầu.                                                                                                 |
+| `vw_f10_design_board_24h`             | View | Bảng ưu tiên hành động cho thiết kế level.                                                                                       |
+| `vw_funnel_first_open_to_level10`     | View | Funnel tổng hợp từ `first_open` đến Level 10 trong 24 giờ, gồm onboarding, early progression, drop-off, win/fail/no-end, timing và move usage. |
 
 ---
 
@@ -154,6 +163,14 @@ Tổng cộng:
 | `vw_level_difficulty_summary`  | View | Tổng hợp độ khó level trên toàn bộ dữ liệu.            |
 | `vw_level_progression_version` | View | Phân tích progression theo app version.                |
 | `vw_pipeline_health_daily`     | View | Kiểm tra sức khỏe kỹ thuật của pipeline hằng ngày.     |
+
+---
+
+### 4.4 Retention analysis
+
+| Object            | Loại | Mục đích                                                                                                  |
+| ----------------- | ---- | --------------------------------------------------------------------------------------------------------- |
+| `vw_d1_retention` | View | Phân tích D1 App Retention, D1 Gameplay Retention và D1 Gameplay Activation among Returners theo `app_version`. |
 
 ---
 
@@ -184,11 +201,15 @@ flowchart TD
   F10_DESIGN_DIAG["vw_f10_design_diag_24h"]
   F10_DESIGN_BOARD["vw_f10_design_board_24h"]
 
+  FUNNEL_FO_L10["vw_funnel_first_open_to_level10"]
+
   USER_REACH["vw_user_level_reach"]
   DIFF_DAILY["vw_level_difficulty_daily"]
   DIFF_SUMMARY["vw_level_difficulty_summary"]
   PROGRESSION_VERSION["vw_level_progression_version"]
   PIPELINE_HEALTH["vw_pipeline_health_daily"]
+
+  D1_RETENTION["vw_d1_retention"]
 
   RAW --> START_EFF
   RAW --> ONBOARD_EVENTS
@@ -226,11 +247,16 @@ flowchart TD
 
   F10_DESIGN_DIAG --> F10_DESIGN_BOARD
 
+  RAW --> FUNNEL_FO_L10
+  DIM_F10 --> FUNNEL_FO_L10
+
   LEVEL_ATTEMPTS --> USER_REACH
   LEVEL_ATTEMPTS --> DIFF_DAILY
   LEVEL_ATTEMPTS --> DIFF_SUMMARY
 
   USER_REACH --> PROGRESSION_VERSION
+
+  RAW --> D1_RETENTION
 
   LEVEL_EVENTS --> PIPELINE_HEALTH
   TUTORIAL_EVENTS --> PIPELINE_HEALTH
@@ -258,7 +284,9 @@ Nếu đọc lần đầu, nên theo thứ tự sau:
 9. `docs/objects/core_foundation/vw_level_tutorial_flag.md`
 10. `docs/objects/core_foundation/vw_level_attempts.md`
 11. Các view trong `current_live_analysis`
-12. Các view trong `monitoring_level_analysis`
+12. `docs/objects/current_live_analysis/vw_funnel_first_open_to_level10.md`
+13. Các view trong `monitoring_level_analysis`
+14. `docs/objects/retention_analysis/vw_d1_retention.md`
 
 ---
 
@@ -276,12 +304,13 @@ Nếu đọc lần đầu, nên theo thứ tự sau:
 
 ### 7.2 Viết tắt chuẩn
 
-| Viết tắt  | Ý nghĩa                           |
-| --------- | --------------------------------- |
-| `f10`     | First 10 level.                   |
-| `onboard` | Onboarding.                       |
-| `diag`    | Diagnostics, tức chẩn đoán.       |
-| `seq`     | Sequence, tức chuỗi thứ tự level. |
+| Viết tắt  | Ý nghĩa                                                       |
+| --------- | ------------------------------------------------------------- |
+| `f10`     | First 10 levels.                                              |
+| `d1`      | Day 1, tức ngày sau cohort date hoặc mốc đầu tùy định nghĩa.  |
+| `onboard` | Onboarding.                                                   |
+| `diag`    | Diagnostics, tức chẩn đoán.                                   |
+| `seq`     | Sequence, tức chuỗi thứ tự level.                             |
 
 ---
 
@@ -292,6 +321,12 @@ Nếu đọc lần đầu, nên theo thứ tự sau:
 | `_24h`     | Chỉ số trong vòng 24 giờ.                       |
 | `_daily`   | Tổng hợp theo ngày.                             |
 | `_summary` | Tổng hợp toàn bộ dữ liệu hoặc tổng hợp cấp cao. |
+
+---
+
+### 7.4 Quy ước chính tả metric
+
+Dùng thống nhất từ **retention** cho tên tài liệu, tên metric và mô tả phân tích.
 
 ---
 
@@ -331,11 +366,19 @@ Các view liên quan:
 
 * `vw_onboard_funnel_24h`
 * `vw_onboard_drop_diag_24h`
+* `vw_funnel_first_open_to_level10`
 
 Mục tiêu:
 
 * đo người chơi có đi từ `first_open` đến `Open_first`, `Vuot_home`, Level 1 hay không;
-* chẩn đoán điểm rơi trong 24 giờ đầu.
+* chẩn đoán điểm rơi trong onboarding;
+* kiểm tra tác động của onboarding tới early progression trong 24 giờ đầu;
+* phát hiện các điểm user mở app nhưng chưa bắt đầu gameplay.
+
+Lưu ý:
+
+* `vw_onboard_funnel_24h` và `vw_onboard_drop_diag_24h` là các view chuyên biệt cho onboarding.
+* `vw_funnel_first_open_to_level10` là view tổng hợp, phù hợp khi cần đọc onboarding cùng với Level 1 đến Level 10 trong cùng một funnel.
 
 ---
 
@@ -348,13 +391,21 @@ Các view liên quan:
 * `vw_f10_funnel_timing_24h`
 * `vw_f10_design_diag_24h`
 * `vw_f10_design_board_24h`
+* `vw_funnel_first_open_to_level10`
 
 Mục tiêu:
 
 * đo phễu 10 level đầu;
 * đo thời gian đi qua từng level;
 * phát hiện level có rủi ro thiết kế;
-* tạo bảng ưu tiên hành động.
+* tạo bảng ưu tiên hành động;
+* đo drop-off từ `first_open`, từ `Open_first`, từ Level 1 và từ step liền trước;
+* đọc win/fail/no-end, move usage, duration và attempt trong bối cảnh early funnel.
+
+Lưu ý:
+
+* `vw_funnel_first_open_to_level10` phù hợp khi cần một bảng tổng hợp để thao tác phân tích hằng ngày.
+* Các view `vw_f10_*` hiện có vẫn hữu ích khi cần đọc các logic chuyên biệt đã tách sẵn như timing, diagnostics hoặc design board.
 
 ---
 
@@ -364,12 +415,20 @@ Các view liên quan:
 
 * `vw_level_difficulty_daily`
 * `vw_level_difficulty_summary`
+* `vw_funnel_first_open_to_level10`
 
 Mục tiêu:
 
 * theo dõi win rate, fail rate, duration và move usage;
 * phân loại level theo độ khó;
-* tách tracking risk khỏi difficulty risk.
+* tách tracking risk khỏi difficulty risk;
+* phát hiện level có friction sớm trong 10 level đầu;
+* hỗ trợ quyết định chỉnh số move, layout, obstacle, tutorial hoặc difficulty ramp.
+
+Lưu ý:
+
+* Với phân tích difficulty toàn bộ level, ưu tiên dùng `vw_level_difficulty_daily` hoặc `vw_level_difficulty_summary`.
+* Với phân tích difficulty trong hành trình từ `first_open` đến Level 10, có thể dùng `vw_funnel_first_open_to_level10`.
 
 ---
 
@@ -379,13 +438,20 @@ Các view liên quan:
 
 * `vw_user_level_reach`
 * `vw_level_progression_version`
+* `vw_funnel_first_open_to_level10`
 
 Mục tiêu:
 
 * đo người chơi đã tới và thắng từng normal level;
 * đo tỷ lệ đi từ level hiện tại sang level kế tiếp;
 * đo rơi sau khi thắng;
-* theo dõi theo app version.
+* theo dõi theo app version;
+* phát hiện churn point trong early progression.
+
+Lưu ý:
+
+* `vw_user_level_reach` phù hợp để đọc trạng thái user theo từng normal level.
+* `vw_funnel_first_open_to_level10` phù hợp để đọc progression nghiêm ngặt theo thứ tự từ Level 1 đến Level 10 trong 24 giờ đầu.
 
 ---
 
@@ -406,6 +472,28 @@ Mục tiêu:
 
 ---
 
+### 9.6 Retention analysis
+
+View liên quan:
+
+* `vw_d1_retention`
+
+Mục tiêu:
+
+* đo D1 App Retention theo `app_version`;
+* đo D1 Gameplay Retention theo `app_version`;
+* đo D1 Gameplay Activation among Returners, tức trong nhóm user đã quay lại app vào D1, bao nhiêu user thật sự bắt đầu chơi level;
+* so sánh chất lượng cohort giữa các app version;
+* hỗ trợ đánh giá tác động của onboarding, early level design và chất lượng phiên chơi đầu tiên lên khả năng quay lại ngày hôm sau.
+
+Lưu ý:
+
+* `vw_d1_retention` định nghĩa D1 theo calendar day local, không phải rolling 24h window.
+* User được gán vào `app_version` tại event `first_open` đầu tiên.
+* D1 activity có thể xảy ra ở app version khác, nhưng user vẫn thuộc cohort version tại `first_open`.
+
+---
+
 ## 10. Một số lưu ý quan trọng
 
 ### 10.1 Không dùng mọi view cho cùng một mục đích
@@ -414,8 +502,9 @@ Ví dụ:
 
 * muốn phân tích từng attempt, dùng `vw_level_attempts`;
 * muốn phân tích từng user theo level, dùng `vw_user_level_reach`;
-* muốn phân tích funnel 10 level đầu, dùng `vw_f10_funnel_24h`;
-* muốn xem bảng ưu tiên design, dùng `vw_f10_design_board_24h`;
+* muốn phân tích funnel 10 level đầu theo các view chuyên biệt, dùng `vw_f10_funnel_24h`, `vw_f10_timing_24h`, `vw_f10_funnel_timing_24h`, `vw_f10_design_diag_24h` hoặc `vw_f10_design_board_24h`;
+* muốn phân tích funnel tổng hợp từ `first_open` đến Level 10, dùng `vw_funnel_first_open_to_level10`;
+* muốn phân tích D1 retention theo cohort và app version, dùng `vw_d1_retention`;
 * muốn kiểm tra lỗi tracking, dùng `vw_pipeline_health_daily`.
 
 ---
@@ -426,13 +515,23 @@ Một số view dùng `vw_level_start_eff`, tức là effective level start.
 
 Một số view dùng `vw_level_attempts`, tức là dữ liệu bắt đầu level đã ghép attempt.
 
-Cần phân biệt hai nguồn này khi so sánh số liệu.
+Một số view, như `vw_funnel_first_open_to_level10`, có logic effective level start riêng trong chính view, bao gồm raw `Start_level` và pseudo `Start_level` cho một số case đặc biệt.
+
+Cần phân biệt rõ nguồn level start khi so sánh số liệu giữa các view.
 
 ---
 
 ### 10.3 Không kết luận difficulty khi tracking chưa ổn
 
-Nếu `matched_end_rate` thấp, cần kiểm tra tracking trước khi kết luận level khó hay dễ.
+Nếu `matched_end_rate`, `end_level_coverage_rate_pct` hoặc coverage của `End_level` thấp, cần kiểm tra tracking trước khi kết luận level khó hay dễ.
+
+Một level có nhiều `start_without_end_user_count` có thể là:
+
+* user thật sự bỏ level;
+* tracking thiếu `End_level`;
+* level window bị sai;
+* event bị lệch `app_version` hoặc `level_name`;
+* user bị mất kết nối hoặc tắt app trước khi gửi event.
 
 ---
 
@@ -441,6 +540,93 @@ Nếu `matched_end_rate` thấp, cần kiểm tra tracking trước khi kết lu
 Các view có hậu tố `_24h` thường dùng cửa sổ 24 giờ kể từ mốc bắt đầu.
 
 Không nên so sánh người chơi chưa đủ thời gian quan sát với người chơi đã đủ thời gian.
+
+`vw_funnel_first_open_to_level10` chỉ lấy user có:
+
+```text
+first_open_time_utc <= CURRENT_TIMESTAMP() - 24 hours
+```
+
+Mục đích là đảm bảo mỗi user trong cohort đã có đủ 24 giờ quan sát.
+
+---
+
+### 10.5 Phân biệt D1 calendar day và rolling 24h window
+
+`vw_d1_retention` định nghĩa D1 theo calendar day local:
+
+```text
+d1_date = cohort_date + 1 day
+```
+
+Trong khi đó, `vw_funnel_first_open_to_level10` dùng cửa sổ quan sát 24 giờ kể từ `first_open_time_utc`:
+
+```text
+[first_open_time_utc, first_open_time_utc + 24 hours]
+```
+
+Hai logic này phục vụ hai câu hỏi khác nhau:
+
+* D1 calendar day dùng để đo user có quay lại vào ngày hôm sau hay không.
+* Rolling 24h window dùng để đo user làm được gì trong 24 giờ đầu sau lần mở app đầu tiên.
+
+Không nên so sánh hai loại window này như cùng một định nghĩa thời gian.
+
+---
+
+### 10.6 Phân biệt app version tại first_open và app version tại event follow-up
+
+Một số view gán user vào `app_version` tại `first_open`.
+
+Cần đọc kỹ từng đặc tả để biết event follow-up có bắt buộc cùng `app_version` hay không.
+
+Ví dụ:
+
+* `vw_d1_retention` vẫn tính D1 activity dù user quay lại ở app version khác, nhưng user vẫn thuộc cohort version tại `first_open`.
+* `vw_funnel_first_open_to_level10` yêu cầu nhiều event trong funnel khớp với `app_version` tại `first_open`.
+
+Điều này có thể làm số liệu giữa retention và funnel khác nhau khi user update app giữa D0 và D1, hoặc giữa các event trong 24 giờ đầu.
+
+---
+
+### 10.7 Cẩn thận với sequential funnel nghiêm ngặt
+
+`vw_funnel_first_open_to_level10` dùng logic sequential progression nghiêm ngặt.
+
+Điều này có nghĩa là user chỉ được tính là reach Level N nếu các level trước đó đã có start hợp lệ và không bị sai thứ tự.
+
+Ưu điểm:
+
+* funnel sạch hơn;
+* dễ phát hiện drop-off thật theo hành trình thiết kế;
+* giảm rủi ro đếm nhầm user do event sai thứ tự.
+
+Rủi ro:
+
+* nếu tracking thiếu một step trước đó, các step sau có thể không được tính dù user thực tế đã chơi;
+* nếu `level_name`, `app_version` hoặc timestamp bị lệch, funnel có thể thấp hơn reach thực tế.
+
+Vì vậy, khi thấy drop bất thường trong `vw_funnel_first_open_to_level10`, nên kiểm tra thêm pipeline health và raw event sample trước khi kết luận thiết kế level có vấn đề.
+
+---
+
+### 10.8 Cẩn thận với định nghĩa active event trong D1 App Retention
+
+Trong `vw_d1_retention`, D1 App Retention hiện tính user retained nếu user có ít nhất 1 active event vào `d1_date`.
+
+Active event hiện được hiểu là event không thuộc nhóm:
+
+```text
+first_open, app_remove
+```
+
+Đây là định nghĩa có thể dùng trong giai đoạn đầu, nhưng cần đọc thận trọng nếu GA4 có nhiều event tự động hoặc event nền không phản ánh việc user thật sự quay lại chơi game.
+
+Vì vậy, khi đánh giá chất lượng gameplay, nên đọc song song:
+
+* D1 App Retention;
+* D1 Gameplay Retention;
+* D1 Gameplay Activation among Returners.
 
 ---
 
@@ -453,6 +639,8 @@ Khi thay đổi một object trong BigQuery:
 3. Cập nhật `docs/graph/mart_dependency_graph.md` nếu dependency thay đổi.
 4. Kiểm tra lại mục `## Liên kết liên quan` ở các spec liên quan.
 5. Ghi rõ thay đổi nếu logic phân tích hoặc định nghĩa metric thay đổi.
+6. Nếu thêm object mới, cập nhật lại tổng số object trong README.
+7. Nếu thêm nhóm phân tích mới, cập nhật lại cấu trúc thư mục, danh sách object và các nhóm phân tích chính.
 
 ---
 
@@ -475,7 +663,7 @@ Không đưa các nội dung sau vào repository:
 Hiện tại đã có đặc tả cho:
 
 ```text
-20 / 20 objects
+22 / 22 objects
 ```
 
 Đã có thêm:
@@ -484,7 +672,15 @@ Hiện tại đã có đặc tả cho:
 Framework Pipeline
 Mart Dependency Graph
 Backlink sections cho từng object spec
+Retention analysis group
+Unified first_open to Level 10 funnel spec
+D1 retention spec
 ```
+
+Các object mới đã được bổ sung vào hệ thống tài liệu tổng quan:
+
+* `vw_funnel_first_open_to_level10`
+* `vw_d1_retention`
 
 Repository này có thể tiếp tục mở rộng thêm:
 
@@ -494,4 +690,6 @@ Repository này có thể tiếp tục mở rộng thêm:
 * release note theo app version;
 * changelog thay đổi SQL;
 * naming convention chi tiết hơn;
-* test query cho từng view.
+* test query cho từng view;
+* retention mở rộng cho D3, D7, D14, D30;
+* dashboard hướng product cho onboarding, early funnel, retention, progression, difficulty và pipeline health.

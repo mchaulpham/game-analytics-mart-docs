@@ -1,7 +1,5 @@
-ĐẶC TẢ VIEW
+ĐẶC TẢ VIEW `vw_d1_retention`
 ===
-`vw_d1_retention`
----
 
 # 1. Thông tin chung
 
@@ -13,18 +11,18 @@ project-feb1f7ca-3dbf-419f-aa8.game_analytics_mart.vw_d1_retention
 
 ## 1.2. Mục đích
 
-View `vw_d1_retention` dùng để phân tích __D1 retention__ theo từng `app_version`.
+View `vw_d1_retention` dùng để phân tích __D1 Retention__ theo từng `app_version`.
 
 View này phục vụ 3 metric chính:
 
-1. D1 App retention
-2. D1 Gameplay retention
+1. D1 App Retention
+2. D1 Gameplay Retention
 3. D1 Gameplay Activation among Returners
 
 Trong đó:
 
-- D1 App retention: User quay lại app vào ngày D1 và có ít nhất 1 active event.
-- D1 Gameplay retention: User quay lại app vào ngày D1 và có ít nhất 1 event `Start_level`.
+- D1 App Retention: User quay lại app vào ngày D1 và có ít nhất 1 active event.
+- D1 Gameplay Retention: User quay lại app vào ngày D1 và có ít nhất 1 event `Start_level`.
 - D1 Gameplay Activation among Returners: Trong nhóm user đã quay lại app vào D1, bao nhiêu % user thật sự bắt đầu chơi level.
 
 ---
@@ -45,7 +43,7 @@ Chỉ đọc các bảng daily có `_TABLE_SUFFIX` dạng ngày:
 REGEXP_CONTAINS(_TABLE_SUFFIX, r'^\d{8}$')
 ```
 
-Điều ngày có nghĩa là view chỉ dùng các bảng: `events_YYYYMMĐ`
+Điều ngày có nghĩa là view chỉ dùng các bảng: `events_YYYYMMDD`
 
 Không dùng các bảng intraday.
 
@@ -60,7 +58,7 @@ View sử dụng các field chính sau từ GA4:
 | `event_name` | Tên event |
 | `app_info.version` | App version tại thời điểm event được ghi nhận |
 
-View không sử dụng `event_params` cho logic D1 retention hiện tại.
+View không sử dụng `event_params` cho logic D1 Retention hiện tại.
 
 ---
 
@@ -68,7 +66,7 @@ View không sử dụng `event_params` cho logic D1 retention hiện tại.
 
 ## 3.1. Timezone sử dụng
 
-View dùng timezone: `Asian/Ho_Chi_Minh` để chuyển timestamp UTC sang ngày local.
+View dùng timezone: `Asia/Ho_Chi_Minh` để chuyển timestamp UTC sang ngày local.
 
 Cách chuyển:
 
@@ -80,7 +78,7 @@ DATE(TIMESTAMP_MICROS(event_timestamp), 'Asia/Ho_Chi_Minh')
 
 `cohort_date` : ngày local mà user có `first_open` đầu tiên.
 
-Ví dụ: User có `first_open` vào 2026-07-01 theo `Asian/Ho_Chi_Minh` → cohort_date = 2026-07-01.
+Ví dụ: User có `first_open` vào 2026-07-01 theo `Asia/Ho_Chi_Minh` → cohort_date = 2026-07-01.
 
 ## 3.3. Định nghĩa `d1_date`
 
@@ -140,7 +138,7 @@ matured_end_cohort_date =
 
 # 5. Định nghĩa D1 activity
 
-## 5.1. D1 App retention
+## 5.1. D1 App Retention
 
 - Một user được tính là `D1 App Retained` nếu user có ít nhất 1 active event vào `d1_date`.
 
@@ -156,9 +154,9 @@ event_name NOT IN ('first_open', 'app_remove')
 
 - Trong đó `d1_active_event_count` : số event vào `d1_date` của user, loại trừ `first_open`và `app_remove`.
 
-## 5.2. D1 Gameplay retention
+## 5.2. D1 Gameplay Retention
 
-- Một user được tính là `D1 Gameplay retention` nếu user có ít nhất 1 event `Start_level` vào `d1_date`.
+- Một user được tính là `D1 Gameplay Retention` nếu user có ít nhất 1 event `Start_level` vào `d1_date`.
 
 - Công thức user-level: `is_d1_gameplay_retained` = `d1_start_level_event_count` > 0
 
@@ -337,7 +335,7 @@ View hiện tại không dùng `event_params`, nên không có bước xử lý 
   - `event_local_date` = `d1_date`
   - `event_time_utc` > `first_open_time_utc`
  
-- Lưu ý quan trọng: D1 activity không bị ràng buộc phải cùng `app_version` với cohort. Điều này cho phép user được tính retained nếu họ `first_open` ở verison A nhưng quay lại D1 ở version B sau khi update.
+- Lưu ý quan trọng: D1 activity không bị ràng buộc phải cùng `app_version` với cohort. Điều này cho phép user được tính retained nếu họ `first_open` ở version A nhưng quay lại D1 ở version B sau khi update.
 
 ## 9.5. Bước 5 — Tính user-level flags
 
@@ -365,3 +363,29 @@ View hiện tại không dùng `event_params`, nên không có bước xử lý 
 - Tạo output total retention cho toàn bộ `matured_cohort_date` của version.
 
 ---
+
+## Liên kết liên quan
+
+• Tổng quan repository: [README](../../../README.md)
+
+• Framework: [Framework Pipeline](../../pipeline/framework_pipeline.md)
+
+• Dependency graph: [Mart Dependency Graph](../../graph/mart_dependency_graph.md)
+
+### Upstream
+
+• GA4 raw events: `project-feb1f7ca-3dbf-419f-aa8.analytics_524104373.events_*`
+
+### Downstream
+
+• Hiện chưa có downstream trực tiếp trong `game_analytics_mart`.
+
+### Object cùng nhóm
+
+• Nhóm tài liệu: `docs/objects/retention_analysis/`
+
+• DDL tham chiếu: `../../../sql/ddl/retention_analysis/vw_d1_retention.sql`
+
+### Tài liệu liên quan
+
+• [vw_funnel_first_open_to_level10](../current_live_analysis/vw_funnel_first_open_to_level10.md) — view funnel 24h từ `first_open` đến Level 10, thường được đọc song song với D1 Retention để đánh giá early player experience.
