@@ -1,5 +1,7 @@
-ĐẶC TẢ VIEW `vw_d1_retension`
+ĐẶC TẢ VIEW
 ===
+`vw_d1_retension`
+---
 
 # 1. Thông tin chung
 
