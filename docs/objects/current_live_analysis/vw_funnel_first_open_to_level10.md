@@ -570,7 +570,7 @@ REGEXP_CONTAINS(_TABLE_SUFFIX, r'^\d{8}$')
 
 | Field | Type | Đặc tả |
 |:---|:---|:---|
-| `avg_move_used_to_win` | FLOAT64 | Số move trung bnhf user dùng để win level (chỉ tnhs user có win).<br>- Công thức user-level: move_count_to_win = số Move từ `level_start_time_utc` tới `first_win_time_utc`<br>- Công thức aggregate: AVG(move_count_to_win) trên các user có has_win = TRUE |
+| `avg_move_used_to_win` | FLOAT64 | Số move trung bình user dùng để win level (chỉ tính user có win).<br>- Công thức user-level: move_count_to_win = số Move từ `level_start_time_utc` tới `first_win_time_utc`<br>- Công thức aggregate: AVG(move_count_to_win) trên các user có has_win = TRUE |
 | `avg_move_used_before_drop_no_win` | FLOAT64 | - Số move trung bình của user không win (chỉ tính user không có win)<br>- Công thức user-level: `move_count_before_no_win` = Số Move từ `level_start_time_utc` tới `level_window_end_time_utc`<br>- Công thức aggragate: AVG(move_count_before_no_win) trên các user has_win = FALSE |
 
 ---
